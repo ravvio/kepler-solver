@@ -4,8 +4,12 @@ project(${NAME} LANGUAGES C)
 
 # Build type
 if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Debug)
+  set(CMAKE_BUILD_TYPE Release)
 endif()
+
+set(CMAKE_CXX_FLAGS "-Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 # Architecture string.
 set(ARCH "${CMAKE_SYSTEM_PROCESSOR}" CACHE STRING "Override CPU architecture")
@@ -15,7 +19,10 @@ string(REGEX REPLACE "amd64" "x86_64" KERNEL_ARCH "${ARCH}")
 set(BUILD_DIR ${CMAKE_BINARY_DIR}/${CMAKE_BUILD_TYPE}/${ARCH})
 
 set(COMMON_HEADERS "./src/ks.h")
-set(COMMON_SOURCES "./src/ks_bisection.c" "./src/ks_newton.c" "./src/ks_enrke.c")
+set(COMMON_SOURCES
+    "./src/ks_bisection.c"
+    "./src/ks_householder.c"
+)
 
 # Add exe
 set(EXE_NAME "ksol")

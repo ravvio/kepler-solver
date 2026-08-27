@@ -1,6 +1,6 @@
 #include "ks.h"
 
-double_t ks_bisection_v0(double_t M, double_t e) {
+double_t ks_bisection_v1(double_t M, double_t e) {
   double_t E_min = M - e;
   double_t E_max = M + e;
 

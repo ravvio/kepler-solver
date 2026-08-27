@@ -3,10 +3,9 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <time.h>
-
-#define TOLERANCE 3e-9
-#define MAX_ITERATIONS 100
+#include <unistd.h>
 
 double_t solve_orbit(double_t T, double_t a, double_t e, double_t t,
                      KS_Solver solver) {
@@ -14,7 +13,6 @@ double_t solve_orbit(double_t T, double_t a, double_t e, double_t t,
   double_t M = 2 * M_PI * t / T;
 
   // Eccentric anomaly
-
   clock_t start = clock();
   double_t E = solver(M, e);
   clock_t end = clock();
@@ -31,37 +29,91 @@ double_t solve_orbit(double_t T, double_t a, double_t e, double_t t,
   return E;
 }
 
-void solve_kepler_full(double_t e, char *prefix, KS_Solver solver) {
-  int steps = 100000;
-  double_t error_total = 0.0;
+void report_full_orbits(int iterations, char *prefix, KS_Solver solver) {
+  char *filename_report;
+  asprintf(&filename_report, "./output/report_%s.csv", prefix);
+  fprintf(stderr, "[%-10s] Report file: %s\n", prefix, filename_report);
 
-  clock_t start = clock();
-  for (int i = 0; i < steps; i++) {
-    double_t M = 2 * M_PI * i / steps;
-    double_t E = solver(M, e);
-    error_total += fabs(M - E + e * sin(E));
+  char *filename_orbit;
+  asprintf(&filename_orbit, "./output/orbit_%s.csv", prefix);
+  fprintf(stderr, "[%-10s] Orbit file: %s\n", prefix, filename_orbit);
+
+  FILE *file_report;
+  file_report = fopen(filename_report, "w");
+  fprintf(file_report,
+          "e,time_avg_ms,error_avg_rad,error_min_rad,error_max_rad\n");
+
+  FILE *file_orbit;
+  file_orbit = fopen(filename_orbit, "w");
+  fprintf(file_orbit, "e,M,time_ms,error_rad\n");
+
+  // Solve the full orbit n (= iterations) times in m (= steps) steps
+  // for many values of eccentricity
+  int steps = 1000;
+  for (double_t e = 0.01; e < 0.99; e += 0.01) {
+    double_t error_sum_rad = 0.0;
+    double_t error_min_rad = MAXFLOAT;
+    double_t error_max_rad = 0.0;
+    double_t time_sum_ms = 0.0;
+
+    for (int step = 0; step < steps; step++) {
+      double_t E, M, m;
+      M = 2 * M_PI * step / steps;
+      if (M > M_PI) {
+        m = 2 * M_PI - M;
+      } else {
+        m = M;
+      }
+
+      clock_t start = clock();
+      for (int i = 0; i < iterations; i++) {
+        E = solver(m, e);
+      }
+      if (M > M_PI) {
+        E = 2 * M_PI - E;
+      }
+      clock_t end = clock();
+
+      double_t err = fabs(M - E + e * sin(E));
+      error_sum_rad += err;
+      error_min_rad = fmin(error_min_rad, err);
+      error_max_rad = fmax(error_max_rad, err);
+
+      float_t ms = 1000 * (float)(end - start) / CLOCKS_PER_SEC;
+      time_sum_ms += ms / iterations;
+
+      fprintf(file_orbit, "%e,%e,%e,%e\n", e, M, err, ms);
+    }
+
+    float_t time_avg_ms = time_sum_ms / steps;
+    double_t error_avg_rad = error_sum_rad / steps;
+    fprintf(file_report, "%e,%e,%e,%e,%e\n", e, time_avg_ms, error_avg_rad,
+            error_min_rad, error_max_rad);
+    fprintf(stdout, "[%-10s] e: %e | Time: %ems | Error: %erad\n", prefix, e,
+            time_avg_ms, error_avg_rad);
   }
-  clock_t end = clock();
-  float_t seconds = (float)(end - start) / CLOCKS_PER_SEC;
-  double_t error_avg = error_total / steps;
 
-  fprintf(stdout, "[%s] Time: %fms %frad\n", prefix, seconds, error_avg);
+  fflush(file_report);
+  fclose(file_report);
+  fflush(file_orbit);
+  fclose(file_orbit);
 }
 
 int main(int argc, char **argv) {
-  char *end_ptr;
-  // Period
-  double_t T = strtod(argv[1], &end_ptr);
-  // Semi-Major Axis
-  double_t a = strtod(argv[2], &end_ptr);
-  // Eccentricity
-  double_t e = strtod(argv[3], &end_ptr);
+  // char *end_ptr;
 
-  // double_t time = strtod(argv[4], &end_ptr);
-  // double_t t = 0.0;
+  struct stat st = {0};
+  if (stat("./output", &st) == -1) {
+    mkdir("./output", 0700);
+  }
 
-  solve_kepler_full(e, "BISEC_v0", ks_bisection_v0);
-  solve_kepler_full(e, "NEWTO_v0", ks_newton_v0);
-  solve_kepler_full(e, "ENRKE_v0", ks_enrke_v0);
-  solve_kepler_full(e, "ENRKE_v1", ks_enrke_v1);
+  report_full_orbits(100, "BISEC_v1", ks_bisection_v1);
+
+  report_full_orbits(100, "HH_PC_NR_NR", ks_hh_pc_nr_nr);
+  report_full_orbits(100, "HH_PC_HA_NR", ks_hh_pc_ha_nr);
+  report_full_orbits(100, "HH_PC_OG_NR", ks_hh_pc_og131_nr);
+
+  report_full_orbits(100, "EHH_PC_NR", ks_ehh_pc_nr);
+  report_full_orbits(100, "EHH_PC_HA", ks_ehh_pc_ha);
+  report_full_orbits(100, "EHH_PC_OG", ks_ehh_pc_og131);
 }
